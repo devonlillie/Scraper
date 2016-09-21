@@ -7,6 +7,8 @@ import re
 import pickle
 import time
 
+from Scrape.urls import make_url
+
 class Scraper:
 	visited = {}
 	to_visit = Queue()
@@ -27,39 +29,6 @@ class Scraper:
 		chromeoptions = webdriver.ChromeOptions()
 		chromeoptions.binary_location = binarypath
 		self.driver = webdriver.Chrome(driverpath,chrome_options=chromeoptions)
-
-		
-	
-	def scrape_page(self,page):
-		"""Scrape a webpage starting at root, to a max_depth, and skipping urls
-		that return True for function skip (defaults to the url being in the visited
-		dictionary"""
-		self.driver.get(self.get_url(page))
-		print(self.get_url(page))
-		
-		if self.visited.has_key(self.driver.current_url):
-			return 'Skipped'
-		
-		soup = BeautifulSoup(self.driver.page_source,'html.parser')
-		pageTitle = soup.title.text if (soup.title and soup.title.text) else ''
-		links = self.get_links(soup)
-		
-		page_context = { 
-					'parent_title':pageTitle,
-					'depth':page['depth']+1
-					}
-		
-		edges = []
-		for link in links:
-			node = self.define_page(link,page_context)
-			self.push_page(node)
-			edges+=[node]
-		
-		new_edges = pd.DataFrame(edges)
-		self.site = self.site.append(new_edges)
-		
-			
-		return 'Visited'
 	
 	def push_page(self,page):
 		"""Push a page definition into the to_visit queue."""
@@ -72,28 +41,17 @@ class Scraper:
 		return possible_links
 		
 	def define_page(self,link,context):
-		test = context.copy()
-		test.update({
-				self.childkey: self.make_url(link['href']),
-				self.parentkey: self.driver.current_url
-				})
+		"""Given a dictionary, that contains a link_href value and other context
+		return a page definition."""
+		test = link.copy()
+		test.update(context)
+		test.update({self.childkey: make_url(link['link_href'],self.driver)})
+		test.update({self.parentkey: self.driver.current_url})
 		return test
 				
 	def get_url(self,page):
 		"""Return absolute url path froma  page definition."""
 		return page[self.childkey]
-	
-	def make_url(self,url):
-		"""Convert href links to absolute paths."""
-		if url.startswith('http'):
-			return url
-		elif url.startswith('/'):
-			base = self.driver.current_url.split('//')
-			return base[0]+'//'+base[1].split('/')[0] + url
-		else:
-			base = self.driver.current_url.split('/')
-			url2 = '/'.join(filter(lambda x: x!='..',url.split('/')))
-			return '/'.join(base[:-1-url.count('..')])+'/'+url2
 
 	
 	def handle_exception(self,driver):
@@ -106,16 +64,32 @@ class Scraper:
 			
 		except Exception:
 			return False	
+			
+	def scrape_page(self,page):
+		self.driver.get(self.get_url(page))
+		print(self.get_url(page))
+		
+		if self.visited.has_key(self.driver.current_url):
+			return 'Skipped'
+		
+		soup = BeautifulSoup(self.driver.page_source,'html.parser')
+		pageTitle = soup.title.text if (soup.title and soup.title.text) else ''
+		links = self.get_links(soup)
+		
+		page_context = {'parent_title':pageTitle,'depth':page['depth']+1}
+		
+		edges = []
+		for link in links:
+			node = self.define_page({'link':link},page_context)
+			edges+=[node]
+			self.push_page(node)
+		
+		new_edges = pd.DataFrame(edges)
+		self.site = self.site.append(new_edges)
+		return 'Visited'
 
 	def scrape(self,url,name='Home', parent='ROOT',root_context={}):
-		firstnode = {  
-					self.childkey:url,
-					self.parentkey:parent,
-					'child_name':name,
-					'parent_name':parent,
-					'parent_title':parent,
-					'depth':0
-					}
+		firstnode = self.root(url,parent,name)
 		firstnode.update(root_context)	
 		self.site = self.site.append(pd.DataFrame([firstnode]))
 		self.to_visit.put(firstnode)
@@ -135,6 +109,16 @@ class Scraper:
 				self.visited[self.driver.current_url] = 'Error'
 			self.to_visit.task_done()
 		self.site.index = range(len(self.site))
+		
+	def root(self,url,parent,name):
+		return {  
+			self.childkey:url,
+			self.parentkey:parent,
+			'link_text':name,
+			'parent_name':parent,
+			'parent_title':parent,
+			'depth':0
+			}
 		
 	def save(self,fn):
 		with open(fn,'w') as f:
