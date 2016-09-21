@@ -66,21 +66,34 @@ class Scraper:
 			return False	
 			
 	def scrape_page(self,page):
+		"""From current state of driver, extract page_source and from that extract list of links.
+		This function takes the current driver state and a page definition, from the page_source 
+		it extracts the html soup and creates a list of possible links. It creates page definitions
+		for each link and if the link has not been visited, pushes it into the queue. Finally it stores
+		the new pages into the sitemap data structure.
+		Output: 
+			- None
+		Internally changes:
+			- site object
+		"""
 		self.driver.get(self.get_url(page))
-		print(self.get_url(page))
+		print(self.get_url(page)) # visual feedback for webcrawler
 		
 		if self.visited.has_key(self.driver.current_url):
 			return 'Skipped'
 		
 		soup = BeautifulSoup(self.driver.page_source,'html.parser')
 		pageTitle = soup.title.text if (soup.title and soup.title.text) else ''
-		links = self.get_links(soup)
-		
 		page_context = {'parent_title':pageTitle,'depth':page['depth']+1}
 		
+		links = self.get_links(soup)
 		edges = []
 		for link in links:
 			node = self.define_page({'link':link},page_context)
+			if visited.has_key(node[self.childkey]):
+				node['repeat']=True
+			else:
+				node['repeat']=False
 			edges+=[node]
 			self.push_page(node)
 		
