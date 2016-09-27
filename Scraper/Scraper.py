@@ -142,10 +142,3 @@ class Scraper:
 		
 	def __unicode__(self):
 		return self.site['child_name'].iloc[0]
-		
-		
-		
-		
-		
-		
-		
