@@ -18,6 +18,7 @@ class SiteMap:
 		""" Load a specific site with the relevant edges and the key names."""
 		with open(sitename,'r') as f:
 			self.edges = pickle.load(f)
+			
 		if logname:
 			with open(logname,'r') as f:
 				self.log = pickle.load(f)
@@ -26,7 +27,13 @@ class SiteMap:
 			self.parentkey = parentkey
 		if childkey:
 			self.childkey = childkey
-
+	
+	def load_data(self,site,parentkey=None,childkey=None):
+		self.edges = site
+		if parentkey:
+			self.parentkey = parentkey
+		if childkey:
+			self.childkey = childkey
 
 	def build_node(self,key):
 		"""Build a node recursively, creating group nodes, single nodes and templatized
@@ -43,19 +50,29 @@ class SiteMap:
 		children = self.edges.loc[self.edges[self.parentkey]==key]
 		parent = self.edges.loc[self.edges[self.childkey]==key]
 		context = {'link':key}
-		mixed_children = [self.build_node(k) for j in children[self.childkey].values]
-		node = get_node(key,context,mixed_children)
+		mixed_children = [self.build_node(k) for k in children[self.childkey].values]
+		node = self.get_node(key,context,mixed_children)
 		return node
 
-	def get_node(self,key,context,mixed_children=[]):
+	def get_node(self,key,context,mixed_children=[],hide=8):
+		n = len(mixed_children)
 		node = {
 			'name': key,
-			'children': mixed_children if len(mixed_children)>8 else None,
-			'_children': mixed_children if len(mixed_children)<=8 else None
+			'children': mixed_children if (n>0) and (n<=hide) else [],
+			'_children': mixed_children if (n>hide)  else []
 			}
 		node.update(context)
 		return node
 		
+	def build_tree(self):
+		root_key = self.edges[self.parentkey].iloc[0]
+		root_context = {'link':root_key}
+		head_nodes = self.edges[self.edges[self.parentkey]==root_key]
+		children = [self.build_node(k) for k in head_nodes[self.childkey].values]
+		self.sitemap = self.get_node(root_key,root_context,children)
+	
 	def dump(self,name):
 		with open('../erdmap/erdmap/static/erdmap/%s.json'%name,'w') as f:
-        	json.dump(self.sitemap,f)
+			json.dump(self.sitemap,f)
+		
+	
